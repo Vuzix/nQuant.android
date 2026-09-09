@@ -1,9 +1,9 @@
-apply plugin: 'com.android.application'
+apply plugin: 'com.android.library'
 
 android {
 	compileSdkVersion = 35
 	defaultConfig {
-		applicationId = "nquant.android"
+		//applicationId = "nquant.android"
 		minSdkVersion 32
 		targetSdkVersion 35
 		versionCode = 1
@@ -26,10 +26,10 @@ android {
 		sourceCompatibility = JavaVersion.VERSION_21
 		targetCompatibility = JavaVersion.VERSION_21
 	}
-	dependenciesInfo {
-		includeInApk = true
-		includeInBundle = true
-	}
+//	dependenciesInfo {
+//		includeInApk = true
+//		includeInBundle = true
+//	}
 	namespace = 'nQuant.android'
 }
 

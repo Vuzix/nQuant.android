@@ -4,6 +4,7 @@ package com.android.nQuant;
 Copyright (c) 2018-2026 Miller Cy Chan
 * error measure; time used is proportional to number of bins squared - WJ */
 
+import android.graphics.Bitmap;
 import android.graphics.Color;
 
 import com.android.nQuant.CIELABConvertor.Lab;
@@ -24,6 +25,10 @@ public class PnnLABQuantizer extends PnnQuantizer {
 
 	public PnnLABQuantizer(String fname) throws IOException {
 		super(fname);
+	}
+
+	public PnnLABQuantizer(Bitmap bitmap) throws IOException {
+		super(bitmap);
 	}
 
 	private static final class Pnnbin {
@@ -313,17 +318,23 @@ public class PnnLABQuantizer extends PnnQuantizer {
 		}
 
 		/* Fill palette */
+		int darkestIdx = 0;
+		float darkestLuma = 100.0f;
 		Integer[] palette = new Integer[extbins > 0 ? nMaxColors : maxbins];
 		short k = 0;
 		for (int i = 0; k < palette.length; ++k) {
 			Lab lab1 = new Lab();
 			lab1.alpha = (int) bins[i].ac;
 			lab1.L = bins[i].Lc; lab1.A = bins[i].Ac; lab1.B = bins[i].Bc;
+			if(lab1.L < darkestLuma) {
+				darkestLuma = lab1.L;
+				darkestIdx = k;
+			}
 			palette[k] = CIELABConvertor.LAB2RGB(lab1);
 
 			i = bins[i].fw;
 		}
-
+		palette[darkestIdx] = 0; // Vuzix: Force a black into the palette
 		return palette;
 	}
 

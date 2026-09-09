@@ -20,6 +20,7 @@ public class PnnQuantizer {
 	protected int width, height;
 	protected int[] pixels = null;
 	protected Integer m_transparentColor = Color.argb(0, BYTE_MAX, BYTE_MAX, BYTE_MAX);
+	protected Integer[] m_palette;
 
 	protected double PR = 0.299, PG = 0.587, PB = 0.114, PA = .3333;
 	protected double ratio = .5, weight = 1;
@@ -31,6 +32,10 @@ public class PnnQuantizer {
 	
 	protected Map<Integer, int[]> closestMap = new HashMap<>();
 	protected Map<Integer, Short> nearestMap = new HashMap<>();
+
+	public PnnQuantizer(Bitmap bitmap) {
+		fromBitmap(bitmap);
+	}
 
 	public PnnQuantizer(String fname) {
 		fromBitmap(fname);
@@ -406,52 +411,62 @@ public class PnnQuantizer {
 		return qPixels;
 	}
 
-	public Bitmap convert(int nMaxColors, boolean dither) throws Exception {
+	public Integer[] getConvertedPalette(int nMaxColors) throws Exception {
+		set_member_palette(nMaxColors);
+		return m_palette;
+	}
+
+	private void set_member_palette(int nMaxColors) throws Exception {
+		if (m_palette != null) {
+			return;
+		}
 		int semiTransCount = 0;
 		for (int i = 0; i < pixels.length; ++i) {
 			int pixel = pixels[i];
 			int alfa = (pixel >> 24) & 0xff;
-			int r   = (pixel >> 16) & 0xff;
-			int g = (pixel >>  8) & 0xff;
-			int b  = (pixel      ) & 0xff;
+			int r = (pixel >> 16) & 0xff;
+			int g = (pixel >> 8) & 0xff;
+			int b = (pixel) & 0xff;
 			pixels[i] = Color.argb(alfa, r, g, b);
 			if (alfa < 0xE0) {
 				if (alfa == 0) {
 					m_transparentPixelIndex = i;
-					if(nMaxColors > 2)
+					if (nMaxColors > 2)
 						m_transparentColor = pixels[i];
 					else
 						pixels[i] = m_transparentColor;
-				}
-				else if (alfa > alphaThreshold)
+				} else if (alfa > alphaThreshold)
 					++semiTransCount;
 			}
 		}
-		
+
 		hasSemiTransparency = semiTransCount > 0;
 		if (nMaxColors <= 32)
 			PR = PG = PB = PA = 1;
 		else {
-			PR = coeffs[0][0]; PG = coeffs[0][1]; PB = coeffs[0][2];
+			PR = coeffs[0][0];
+			PG = coeffs[0][1];
+			PB = coeffs[0][2];
 		}
 
-		Integer[] palette;
 		if (nMaxColors > 2)
-			palette = pnnquan(pixels, nMaxColors);
+			m_palette = pnnquan(pixels, nMaxColors);
 		else {
-			palette = new Integer[nMaxColors];
+			m_palette = new Integer[nMaxColors];
 			weight = 1;
 			if (m_transparentPixelIndex >= 0) {
-				palette[0] = m_transparentColor;
-				palette[1] = Color.BLACK;
+				m_palette[0] = m_transparentColor;
+				m_palette[1] = Color.BLACK;
+			} else {
+				m_palette[0] = Color.BLACK;
+				m_palette[1] = Color.WHITE;
 			}
-			else {
-				palette[0] = Color.BLACK;
-				palette[1] = Color.WHITE;
-			}
-		}		
+		}
+	}
 
-		int[] qPixels = dither(pixels, palette, width, height, dither);
+	public Bitmap convert(int nMaxColors, boolean dither) throws Exception {
+		set_member_palette(nMaxColors);
+		int[] qPixels = dither(pixels, m_palette, width, height, dither);
 		return Bitmap.createBitmap(qPixels, width, height, Bitmap.Config.ARGB_8888);
 	}
 	

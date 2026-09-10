@@ -18,7 +18,7 @@ import java.util.Random;
 public class PnnLABQuantizer extends PnnQuantizer {
 	private boolean isNano = false;
 	private static final double TRANS_RATE = 1 - (512 + 101) / 768.0;
-	protected float[] saliencies;
+	//protected float[] saliencies;
 	private final Map<Integer, Lab> pixelMap = new HashMap<>();
 	
 	private static Random random = new Random();
@@ -33,7 +33,7 @@ public class PnnLABQuantizer extends PnnQuantizer {
 
 	private static final class Pnnbin {
 		float ac = 0, Lc = 0, Ac = 0, Bc = 0, err = 0;
-		float cnt = 0;
+		int cnt = 0;
 		int nn, fw, bk, tm, mtm;
 	}
 
@@ -124,21 +124,25 @@ public class PnnLABQuantizer extends PnnQuantizer {
 	protected QuanFn getQuanFn(int nMaxColors, short quan_rt) {
 		if (quan_rt > 0) {
 			if (quan_rt > 1)
-				return cnt -> (float) Math.pow(cnt, 0.75);
+				return cnt -> (int)(Math.pow((float)cnt, 0.75) + 0.5f);
 			if (nMaxColors < 64)
 				return cnt -> (int) Math.sqrt(cnt);
 
-			return cnt -> (float) Math.sqrt(cnt);
+			return cnt -> (int) (Math.sqrt(cnt) + 0.5f);
 		}
 		return cnt -> cnt;
+	}
+
+	private float updateAverage(float previousAverage, float newValue, int newCount) {
+		return 	previousAverage + ((newValue - previousAverage) / (float) newCount);
 	}
 
 	@Override
 	protected Integer[] pnnquan(final int[] pixels, int nMaxColors)
 	{
 		short quan_rt = (short) 1;
-		Pnnbin[] bins = new Pnnbin[65536];
-		saliencies = nMaxColors >= 128 ? null : new float[pixels.length];
+		Pnnbin[] bins = new Pnnbin[65536]; // 0 - 65535
+		//saliencies = nMaxColors >= 128 ? null : new float[pixels.length];
 		float saliencyBase = .1f;
 
 		/* Build histogram */
@@ -147,19 +151,27 @@ public class PnnLABQuantizer extends PnnQuantizer {
 			if (Color.alpha(pixel) <= alphaThreshold)
 				pixel = m_transparentColor;
 			
-			int index = BitmapUtilities.getColorIndex(pixel, hasSemiTransparency, nMaxColors < 64 || m_transparentPixelIndex >= 0);
+			int index = BitmapUtilities.getColorIndex(pixel, hasSemiTransparency, /*nMaxColors < 64 ||*/ m_transparentPixelIndex >= 0);
 			Lab lab1 = getLab(pixel);
 
-			if(bins[index] == null)
+			if (bins[index] == null) {
 				bins[index] = new Pnnbin();
-			Pnnbin tb = bins[index];
-			tb.ac += lab1.alpha;
-			tb.Lc += lab1.L;
-			tb.Ac += lab1.A;
-			tb.Bc += lab1.B;
-			tb.cnt += 1.0f;
-			if(saliencies != null)
-				saliencies[i] = saliencyBase + (1 - saliencyBase) * lab1.L / 100f * lab1.alpha / 255f;
+				Pnnbin tb = bins[index];
+				tb.ac = lab1.alpha;
+				tb.Lc = lab1.L;
+				tb.Ac = lab1.A;
+				tb.Bc = lab1.B;
+				tb.cnt = 1;
+			} else {
+				Pnnbin tb = bins[index];
+				tb.cnt++;
+				tb.ac = updateAverage(tb.ac, lab1.alpha, tb.cnt);
+				tb.Lc = updateAverage(tb.Lc, lab1.L, tb.cnt);
+				tb.Ac = updateAverage(tb.Ac, lab1.A, tb.cnt);
+				tb.Bc = updateAverage(tb.Bc, lab1.B, tb.cnt);
+			}
+			//if(saliencies != null)
+			//	saliencies[i] = saliencyBase + (1 - saliencyBase) * lab1.L / 100f * lab1.alpha / 255f;
 		}
 
 		/* Cluster nonempty bins at one end of array */
@@ -168,15 +180,10 @@ public class PnnLABQuantizer extends PnnQuantizer {
 		for (int i = 0; i < bins.length; ++i) {
 			if (bins[i] == null)
 				continue;
-
-			float d = 1f / bins[i].cnt;
-			bins[i].ac *= d;
-			bins[i].Lc *= d;
-			bins[i].Ac *= d;
-			bins[i].Bc *= d;
-
-			bins[maxbins++] = bins[i];
+			bins[maxbins] = bins[i];
+			maxbins++;
 		}
+		VerboseLog("Quantization found " + maxbins  + " bins making " + nMaxColors + " colors");
 
 		double proportional = BitmapUtilities.sqr(nMaxColors) / maxbins;
 		if((m_transparentPixelIndex >= 0 || hasSemiTransparency) && nMaxColors < 32)
@@ -214,19 +221,19 @@ public class PnnLABQuantizer extends PnnQuantizer {
 		QuanFn quanFn = getQuanFn(nMaxColors, quan_rt);
 
 		int j = 0;
-		for (; j < maxbins - 1; ++j) {
+		for (; j < maxbins - 1; ++j) { // One short
 			bins[j].fw = j + 1;
 			bins[j + 1].bk = j;
 
 			bins[j].cnt = quanFn.get(bins[j].cnt);
 		}
-		bins[j].cnt = quanFn.get(bins[j].cnt);
+		bins[j].cnt = quanFn.get(bins[j].cnt); // the last entry is special
 
 		final boolean texicab = proportional > .0225 && !hasSemiTransparency;
 		
-		if(hasSemiTransparency)
+		if(hasSemiTransparency) {
 			ratio = .5;
-		else if(quan_rt != 0 && nMaxColors < 64) {
+		} else if(quan_rt != 0 && nMaxColors < 64) {
 			if (proportional > .018 && proportional < .022)
 				ratio = Math.min(1.0, proportional + weight * Math.exp(3.13));
 			else if (proportional > .1)
@@ -237,15 +244,15 @@ public class PnnLABQuantizer extends PnnQuantizer {
 				ratio = Math.min(1.0, proportional + weight * Math.exp(3.66));
 			else
 				ratio = Math.min(1.0, proportional + weight * Math.exp(1.718));
-		}
-		else if(nMaxColors > 256)
+		} else if(nMaxColors > 256) {
 			ratio = Math.min(1.0, 1 - 1.0 / proportional);
-		else
+		} else {
 			ratio = Math.min(1.0, 1 - weight * .7);
-
-		if (!hasSemiTransparency && quan_rt < 0)
+		}
+		if (!hasSemiTransparency && quan_rt < 0) {
 			ratio = Math.min(1.0, weight * Math.exp(3.13));
-
+		}
+		VerboseLog("Using ratio: " + ratio);
 		int h, l, l2;
 		/* Initialize nearest neighbors and build heap of them */
 		int[] heap = new int[bins.length + 1];
@@ -508,7 +515,8 @@ public class PnnLABQuantizer extends PnnQuantizer {
 		if(hasSemiTransparency)
 			weight *= -1;
 
-		if(dither && saliencies == null && (palette.length <= 256 || weight > .99)) {
+		float[] saliencies = null;
+		if(dither && /*saliencies == null &&*/ (palette.length <= 256 || weight > .99)) {
 			saliencies = new float[pixels.length];
 			float saliencyBase = .1f;
 

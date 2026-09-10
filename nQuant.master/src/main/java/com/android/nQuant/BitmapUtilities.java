@@ -5,6 +5,13 @@ import android.graphics.Color;
 public class BitmapUtilities {
 	static final char BYTE_MAX = -Byte.MIN_VALUE + Byte.MAX_VALUE;
 
+	/**
+	 * Returns a 16-bit representation of the color: 5 bits red, 6 bits green, 5 bits blue
+	 * @param c Color
+	 * @param hasSemiTransparency
+	 * @param hasTransparency
+	 * @return 16 bit version of the color
+	 */
 	static int getColorIndex(final int c, boolean hasSemiTransparency, boolean hasTransparency)
 	{
 		if(hasSemiTransparency)

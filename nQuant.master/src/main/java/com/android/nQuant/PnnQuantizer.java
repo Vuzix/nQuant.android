@@ -7,6 +7,7 @@ Copyright (c) 2018-2026 Miller Cy Chan
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
+import android.util.Log;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -14,6 +15,8 @@ import java.util.Map;
 import static com.android.nQuant.BitmapUtilities.BYTE_MAX;
 
 public class PnnQuantizer {
+	protected static final boolean DEBUG = false;
+	protected static final String TAG = "nQuant";
 	protected short alphaThreshold = 0xF;
 	protected boolean hasSemiTransparency = false;
 	protected int m_transparentPixelIndex = -1;
@@ -29,7 +32,7 @@ public class PnnQuantizer {
 		{-0.14713f, -0.28886f, 0.436f},
 		{0.615f, -0.51499f, -0.10001f}
 	};
-	
+
 	protected Map<Integer, int[]> closestMap = new HashMap<>();
 	protected Map<Integer, Short> nearestMap = new HashMap<>();
 
@@ -53,9 +56,16 @@ public class PnnQuantizer {
 		fromBitmap(bitmap);
 	}
 
+	protected void VerboseLog(String msg) {
+		if (DEBUG) {
+			Log.d(TAG, msg);
+		}
+	}
+
 	private static final class Pnnbin {
 		double ac = 0, rc = 0, gc = 0, bc = 0;
-		float cnt = 0, err = 0;
+		int cnt = 0;
+		float err = 0;
 		int nn, fw, bk, tm, mtm;
 	}
 
@@ -122,13 +132,13 @@ public class PnnQuantizer {
 	
 	@FunctionalInterface
 	protected interface QuanFn {
-		float get(float cnt);
+		int get(int cnt);
 	}
 
 	protected QuanFn getQuanFn(int nMaxColors, short quan_rt) {
 		if (quan_rt > 0) {
 			if (nMaxColors < 64)
-				return cnt -> (float) Math.sqrt(cnt);
+				return cnt -> (int)(Math.sqrt(cnt) + 0.5f);
 			return cnt -> (int) Math.sqrt(cnt);
 		}
 		if (quan_rt < 0)
